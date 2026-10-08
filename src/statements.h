@@ -860,7 +860,7 @@ public:
 		unroll_limit.enter_unrolling();
 		while (true) {
 			ir::Value cv = netlist.ReduceBool(eval(stmt.cond));
-			ir::Value break_rv = context.vstate.evaluate(netlist, guard1.flag);
+			ir::Value break_rv = context.substitute_rvalue(guard1.flag);
 			ir::Value joint_break = netlist.LogicOr(netlist.LogicNot(cv), break_rv);
 
 			if (!joint_break.is_fully_const()) {

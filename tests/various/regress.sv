@@ -361,3 +361,14 @@ module r30(input logic [1:0] sel, output logic [1:0] y);
 		endcase
 	end
 endmodule
+
+module r31;
+	logic [7:0] q;
+	initial begin
+		int i = 0;
+		while (i < 4) begin
+			q[i] = 1;
+			i = i + 1;
+		end
+	end
+endmodule
