@@ -154,7 +154,7 @@ struct SwitchHelper
 
 					bool skip_pattern = false;
 					for (uint64_t i = width; i < pat.size(); i++) {
-						if (pat.bits[i] != PatternBit(ir::S0)) {
+						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
 							skip_pattern = true;
 							break;
 						}
@@ -216,7 +216,7 @@ struct SwitchHelper
 
 					bool skip_pattern = false;
 					for (int i = width; i < pat.size(); i++) {
-						if (pat.bits[i] != PatternBit(ir::S0)) {
+						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
 							if (!pat.bits[i].is_const())
 								return false;
 							skip_pattern = true;
@@ -238,13 +238,20 @@ struct SwitchHelper
 			   (no_of_covered_cases > (1 << 24) || ((no_of_covered_cases * 4) >> width) >= 1);
 	}
 
-	ir::Value emit_bmux(NetlistContext &netlist, VariableChunk chunk, ir::Value background)
+	ir::Value emit_bmux(
+			NetlistContext &netlist, VariableChunk chunk, ir::Value background, bool full_case)
 	{
 		int full_width = dispatch.size();
 		int width = full_width;
 		while (width > 0 && dispatch[width - 1] == ir::S0)
 			width--;
-		ir::Value bmux_a = background.repeat(1 << width);
+		ir::Value bmux_a;
+
+		if (full_case)
+			bmux_a = ir::Value(ir::Sx, background.width() << width);
+		else
+			bmux_a = background.repeat(1 << width);
+
 		for (auto it = branch_updates.rbegin(); it != branch_updates.rend(); it++) {
 			auto &[case1, target, updates] = *it;
 
@@ -267,7 +274,7 @@ struct SwitchHelper
 
 					bool ignore_pattern = false;
 					for (int i = width; i < pat.size(); i++) {
-						if (pat.bits[i] != PatternBit(ir::S0)) {
+						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
 							assert(pat.bits[i].is_const());
 							ignore_pattern = true;
 							break;
@@ -287,12 +294,16 @@ struct SwitchHelper
 							base |= ((uint64_t)1) << i;
 						} else if (pat.bits[i] == PatternBit(ir::S0)) {
 							// do nothing
+						} else if (pat.bits[i] == PatternBit(ir::Sx)) {
+							ignore_pattern = true;
 						} else {
 							// We should not reach this point
 							// with a non-constant pattern
 							assert_invariant(false && "unreachable");
 						}
 					}
+					if (ignore_pattern)
+						continue;
 
 					for (uint64_t dc_val = 0;; dc_val = (((dc_val | ~dc_mask) + 1) & dc_mask)) {
 						uint64_t base_idx = (base | dc_val) * chunk.bitwidth();
@@ -345,8 +356,8 @@ struct SwitchHelper
 					continue;
 				}
 
-				vstate.set(chunk,
-						emit_bmux(netlist, chunk, background.extract(done, chunk.bitwidth())));
+				vstate.set(chunk, emit_bmux(netlist, chunk,
+										  background.extract(done, chunk.bitwidth()), full_case));
 				done += chunk.bitwidth();
 			}
 		} else {
@@ -573,7 +584,7 @@ public:
 		case ast::AssertionKind::Assert:        flavor = "assert"; break;
 		case ast::AssertionKind::Assume:        flavor = "assume"; break;
 		case ast::AssertionKind::CoverProperty: flavor = "cover"; break;
-		default:                                netlist.add_diag(diag::AssertionUnsupported, statement.sourceRange); return;
+		default: netlist.add_diag(diag::AssertionUnsupported, statement.sourceRange); return;
 		}
 
 #ifndef SLANG_NO_YOSYS
