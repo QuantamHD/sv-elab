@@ -1912,6 +1912,10 @@ public:
 		std::vector<Aload> aloads;
 		ir::Value prior_branch_taken;
 
+		// Include in the driven set variables assigned from the sync branch
+		// or any async branch
+		VariableBits driven;
+
 		for (auto &async_branch : async) {
 			ir::Value sig = netlist.convert_static(async_branch.trigger);
 			assert_invariant(sig.size() == 1);
@@ -1930,6 +1934,9 @@ public:
 #ifndef SLANG_MUX_LOWERING
 			branch.copy_case_tree_into(proc->root_case);
 #endif
+
+			driven.append(branch.all_driven());
+
 			aloads.push_back({
 				sig.as_net(), async_branch.polarity, branch.vstate, &async_branch.body
 			});
@@ -1960,8 +1967,9 @@ public:
 			sync_branch.copy_case_tree_into(proc->root_case);
 #endif
 
-			// FIXME: ignores variables not driven from the sync procedure
-			VariableBits driven = sync_branch.all_driven();
+			driven.append(sync_branch.all_driven());
+			driven.sort_and_unify();
+
 			for (VariableChunk driven_chunk : driven.chunks()) {
 				const ast::Type *type = &driven_chunk.variable.get_symbol()->getType();
 				ir::Value assigned = sync_branch.vstate.evaluate(netlist, driven_chunk);
